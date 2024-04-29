@@ -103,15 +103,24 @@ useQuer가 반환하는 객체에는 여러개의 속성이 있다.
 - isError: 에러 발생 여부 boolean
     - 기본적으로 queryFn을 3번(기본설정) 시도한 후 계속 에러 및 실패하면 true가됨.
 - isFetching: 비동기 쿼리가 아직 해결되지 않았음
-    - 아직 fetch가 완료되지 않았지만 axios 호출이나 GraphQL 호출 같은 다른 종류의 데이터를 가져오는 작업일 수 있음.
-    - isLoading은 그 하위집합으로 로딩중임을 뜻함.
-        - 쿼리 함수가 아직 미해결이고, 이전에 실행 적이 없어서 캐시된 데이터도 없을 때
-        - 페이지네이션을 볼 때 캐시가 있는지 없는지 구분하는것이 중요함
 - error: 에러 발생시 에러객체
+
+### isFetching VS isLoading
+
+**isFetching**
+
+- 비동기 쿼리 함수가 아직 해결되지 않았는지의 여부
+- true: 데이터를 아직 가져오고 있는 상태
+
+**isLoading**
+
+- isFetching이 참이고, 해당 쿼리에 대한 캐시된 데이터가 없는지의 여부
+- true: 데이터를 가져오고 있고 캐시된 데이터도 없는 상태
 
 ### stale data란?
 
 - 유효기간이 만료되어 다시 가져올 준비가 된 데이터
+    - **staleTime** - 캐시된 데이터가 만료되는 시간
 - 데이터는 여전히 캐시에 있음(데이터가 stale로 표시되었다고 해도 캐시에서 삭제되었다는 것은 아님)
     - 그저 데이터를 다시 검증해야한다는 뜻
 - stale data에 대해서만 refetch 함
@@ -158,4 +167,59 @@ const { data, isLoading, isError, error } = useQuery({
     - 예를들면 컴포넌트를 다시 마운트 하거나, 창에 다시 포커스하거나, refetch함수를 수동으로 실행하거나, 등등
 - 동일한 쿼리 키로 쿼리 함수가 실행되면 캐시된 데이터가 있는 경우 새로운 데이터를 가져오지 않고 캐시된 데이터를 사용함.
 - 쿼리 키가 변경되어야 새로운 쿼리가 생성됨. 따라서 각각의 쿼리에 대해 별도로 라벨을 지정하여 각 쿼리를 개별적으로 캐시할 수 있음. (각 쿼리는 개별적인 **`stale`** 시간과 캐시 시간을 갖게 됨)
-- **데이터를 가져올 때 사용되는 쿼리 함수의 모든 값은 쿼리 키의 일부여야 하며, 종속성 배열에 요소로 넣어주어야 함.**
+- **데이터를 가져올 때 사용되는 쿼리 함수의 모든 값은 쿼리 키의 일부여야 하며, 종속성 배열에 요소로 넣어주어야 함. ⇒ 쿼리 함수를 변경하는 모든 값이 쿼리 키에 포함되어야 데이터가 변경될 것으로 예상할 때 재실행이 됨**
+
+## Prefetching
+
+- 사용자가 요청하기 전에 필요한 데이터를 미리 불러오는 것.
+- 데이터를 캐싱
+- 기본적으로 stale로 간주하지만 re-fetching을 하는 동안 캐시에 있는 데이터를 제공해줄 수 있음
+- ex) 페이지네이션의 다음페이지에 대한 prefetching, 사용자 웹사이트 방문시 다음 방문할 탭의 데이터 prefetching
+
+### **prefetchQuery**
+
+미리 데이터를 불러와서 캐싱하는 queryClient의 메소드
+
+```jsx
+// prefetchQuery메소드를 사용해서 다음 페이지 데이터 prefetching 하기
+
+// 컴포넌트 내부
+  const queryClient = useQueryClient();
+  
+  useEffect(() => {
+    if (currentPage < maxPostPage) {
+      const nextPage = currentPage + 1;
+      queryClient.prefetchQuery({ queryKey: ["posts", nextPage], queryFn: () => fetchPosts(nextPage) })
+    }
+  },[currentPage, queryClient])
+```
+
+- 쿼리 클라이언트를 가져와서 prefetchQuery메소드 사용
+- prefetching할 시점을 신중히 생각해서 prefetchQuery 실행시키기.
+- prefetchQuery의 인수는 useQuery와 유사함.
+    - queryKey의 형태 일치해야 함
+- 예를들어 다음 페이지에 대한 prefetching이라면..
+    - 다음 페이지 버튼의 클릭 이벤트에서 실행하는것? X → 상태 업데이트가 비동기적으로 일어나기 때문에 현재 페이지가 무엇인지 확실히 할 수 없음.
+    - 현재 페이지가 변경될 때마다 실행되어야 하므로 useEffect를 사용
+
+## Mutations
+
+네트워크 호출을 해서 서버에서 실제 데이터를 업데이트하는 것
+
+```jsx
+// 컴포넌트 내부
+const updateMutation = useMutation({
+    mutationFn: (postId) => updatePost(postId),
+})
+
+return <div>
+         <button onClick={() => updateMutation.mutate(post.id)}>Update title</button>
+         {updateMutation.isPending && <p className='loading'>Updating the post</p>}
+         {updateMutation.isError && <p className='error'>Error updating the post: {updateMutation.error.toString()}</p>}
+         {updateMutation.isSuccess && <p className='success'>Post was (not) update</p>}
+	     </div>
+```
+
+- useMutation의 인자로 전달할 객체의 mutationFn 속성에 서버의 변경사항을 호출하는 함수를 작성
+    - useMutation이 리턴하는 mutation객체의 `mutate` 메서드를 호출하면 됨
+- isPending 속성으로 mutation 진행 여부를 표시
