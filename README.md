@@ -342,3 +342,20 @@ const { data: appointments = fallback } = useQuery({
 ```
 
 - useQuery의 **refetchInterval** 옵션을 사용해서 fetch 주기를 설정할 수 있음
+
+### 캐시 데이터 조작하기
+
+```jsx
+  function updateUser(newUser: User): void {
+    queryClient.setQueryData(generateUserKey(newUser.id, newUser.token), newUser);
+  }
+
+  function clearUser() {
+    queryClient.removeQueries({ queryKey: [queryKeys.user] });
+  }
+```
+
+- **setQueryData**: 쿼리의 캐시된 데이터를 업데이트하는 데 사용
+    - `setQueryData('쿼리 키', 업데이트된 데이터);`
+- **removeQueries: 쿼리 제거**
+    - `removeQueries('쿼리 키');`
