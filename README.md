@@ -232,3 +232,113 @@ return <div>
 - 현재 가져오기 상태인 쿼리 호출의 수를 나타내는 정수를 반환.
     - 그 결과에 따라 UI를 업데이트할 수 있음
 - 로딩 인디케티터에 사용
+
+## useQuery의 select 옵션으로 데이터 필터링하기
+
+```jsx
+export function useStaff() {
+  const [filter, setFilter] = useState("all");
+
+  const fallback: Staff[] = [];
+
+  const selectFn = useCallback(
+    (data: Staff[]) => {
+      if (filter === "all") return data;
+      return filterByTreatment(data, filter);
+    },
+    [filter],
+  );
+
+  const { data: staff = fallback } = useQuery({
+    queryKey: [queryKeys.staff],
+    queryFn: getStaff,
+    select: selectFn,
+  });
+
+  return { staff, filter, setFilter };
+```
+
+- **`useQuery`** 훅을 통해 가져온 데이터를 컴포넌트에 더 적합하고 사용하기 편리하게 만들 수 있음
+- 캐시된 데이터를 가공하여 원하는 형태로 변환
+    - 필요한 속성만 추출하거나 복제하여 반환
+    - 여러 데이터 소스를 결합하거나 연산을 수행하여 새로운 데이터를 생성
+    - 데이터를 필터링하거나 정렬
+- 데이터가 변경되거나 함수가 변경된 경우에만 select 함수를 실행(useCallback 사용해서 함수 참조값 유지하기)
+- 데이터가 마지막으로 데이터를 검색했을 때와 동일하고 select 함수가 동일한 경우 select 함수를 다시 실행하지 않음
+
+## Re-fetch
+
+- 오래된 쿼리는 특정 조건에 따라 백그라운드에서 자동으로 refetch됨.
+    - 쿼리의 새 인스턴스가 마운트될 때
+        - 해당 키가 포함된 쿼리가 처음으로 호출될 때
+    - 리액트 컴포넌트(useQuery를 호출하는 컴포넌트)를 마운트할 때
+    - 윈도우 창이 refocus 되었을 때
+    - 네트워크가 다시 연결됐을 때
+    - refetchInterval이 경과한 경우
+- 전역 또는 특정 query에 옵션으로 refetch를 컨트롤할 수 있음
+    - refetchOnMount: boolean
+    - refetchOnWindowFocus: boolean
+    - refetchOnReconnect: boolean
+    - refetchInterval: ms (시간)
+- 또는 useQuery가 반환하는 객체에 담긴 refetch 함수를 사용
+- refetch를 억제할 땐 ⇒ staleTime을 늘리기
+    - 데이터가 오래된 경우에만 리페치를 트리거하기 때문
+    - 자주 변경되지 않고 약간 오래되어도 사용자에게 큰 영향을 미치지 않는 데이터에 대해서만 신중하게 적용할 것
+    - 잘 사용하면 네트워크 호출을 절약할 수 있음. 하지만 그만한 가치가 있는지를 따져보고 신중히 적용하기!
+
+```tsx
+const { data = fallback } = useQuery({
+    queryKey: [queryKeys.treatments],
+    queryFn: getTreatments,
+    staleTime: 600000, // 10 minutes
+    gcTime: 900000, // 15 minutes
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  
+// 프리페치는 일회성 작업. 때문에 리페칭은 적용되지 않음.
+queryClinet.prefetchQuery({
+    queryKey: [queryKeys.treatments],
+    queryFn: getTreatments,
+    staleTime: 600000, // 10 minutes
+    gcTime: 900000, // 15 minutes
+  });
+```
+
+- 일반적으로 gcTime은 staleTime보다 길게 설정함
+    - 데이터가 "stale" 상태가 되어 새로운 데이터를 가져오는 동안 사용자는 캐시된 데이터를 볼 수 있도록 함
+    
+
+### Re-fetch에 대한 global settings
+
+- re-fetch에 대한 옵션을 전역적으로 적용
+- useQuery나 prefetchQuery에 기본 옵션으로 적용됨(개별 쿼리 옵션으로 재정의 할 수 있음)
+
+```jsx
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 600000, // 10 minutes
+      gcTime: 900000, // 15 minutes
+      refetchOnWindowFocus: false,
+    }
+  }
+});
+```
+
+### Polling(_Auto ReFetching)
+
+Polling: 주기적으로 서버로부터 데이터를 가져오는 것
+
+- 주기적으로 데이터를 업데이트해야 하는 경우가 많은데, 이때 폴링을 사용하여 일정 시간마다 서버에 요청하여 데이터를 업데이트 함.
+
+```jsx
+const { data: appointments = fallback } = useQuery({
+    queryKey: [queryKeys.appointments, monthYear.year, monthYear.month],
+    queryFn: () => getAppointments(monthYear.year, monthYear.month),
+    **refetchInterval**: 60000, // every minutes
+  });
+```
+
+- useQuery의 **refetchInterval** 옵션을 사용해서 fetch 주기를 설정할 수 있음
