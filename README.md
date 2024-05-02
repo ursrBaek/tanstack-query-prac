@@ -202,9 +202,9 @@ const { data, isLoading, isError, error } = useQuery({
     - 다음 페이지 버튼의 클릭 이벤트에서 실행하는것? X → 상태 업데이트가 비동기적으로 일어나기 때문에 현재 페이지가 무엇인지 확실히 할 수 없음.
     - 현재 페이지가 변경될 때마다 실행되어야 하므로 useEffect를 사용
 
-## Mutations
+### useMutate
 
-네트워크 호출을 해서 서버에서 실제 데이터를 업데이트하는 것
+데이터를 수정하거나 업데이트하기 위한 뮤테이션을 수행
 
 ```jsx
 // 컴포넌트 내부
@@ -359,3 +359,70 @@ const { data: appointments = fallback } = useQuery({
     - `setQueryData('쿼리 키', 업데이트된 데이터);`
 - **removeQueries: 쿼리 제거**
     - `removeQueries('쿼리 키');`
+
+## Mutations
+네트워크 호출을 해서 서버에서 실제 데이터를 업데이트하는 것
+
+실습과정 1. mutate → 서버 업데이트 → 캐시에 있던 서버 데이터(서버상태) 지우고 → 쿼리무효화(새로고침 트리거)
+
+실습과정 2. mutate → 서버 업데이트 → 서버로부터 응답받은 새로운 데이터로 캐시 업데이트
+
+### useMutation
+
+```jsx
+const { mutate } = useMutation({
+	mutationFn: removeAppointmentUser,
+	onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [queryKeys.appointments],
+      });
+    },
+ });
+```
+
+- 한 번의 작업이기 때문에 캐시되는 데이터 없음
+- 기본적으로 재시도 없음(설정가능)
+- **mutationFn**: 기본적으로 mutate 함수에 전달할 인수가 직접 콜백으로 전달됨.
+    - 굳이 화살표함수 만들어서 함수에 인수를 전달해주지 않아도 되며, 함수에 인수가 추가적으로 들어가야한다면 그 때 익명함수 사용해주면 됨.
+
+### invalidateQuries
+
+특정 쿼리 또는 여러 쿼리를 무효화(invalidate)하여 해당 쿼리의 데이터를 다시 가져오도록 강제하는 데 사용됨. 이 함수를 사용하여 캐시된 데이터를 수동으로 무효화시킬 수 있음.
+
+- 쿼리를 stale로 표시
+- 쿼리가 현재 렌더링되고 있다면 재요청을 트리거
+(active한 쿼리에 대해 re-fetch)
+- ex) mutation 후 사용자가 페이지를 새로고침할 필요 없이 바로 업데이트된 정보를 볼 수 있게 함
+- 처리과정 예시
+    - mutate → onSuccess 핸들러에서 InvalidateQuries를 호출하여 쿼리 무효화 → active query에 대해 refetch → 사용자가 페이지를 새로고침 할 필요없이 데이터가 업데이트된다
+
+**Query Filters**
+
+- 한 번에 여러 쿼리에 영향을 줄 수 있는 쿼리 클라이언트 메서드(removeQueries, invalidateQueries, cancelQueries,…)에 적용
+- removeQueries, invalidateQueries, cancelQueries등의 이 메서드들은 쿼리 필터 인자를 받음
+    - 특정 필터에 의해 쿼리를 지정.
+        - ‘부분적으로 일치하는 키를 포함하는가’의 여부로 필터링 가능 → 단, 시작부분 이어야 한다
+            
+            ```jsx
+            // 쿼리키가 appointments로 시작하는 모든 쿼리에 대해 무효화
+            queryClient.invalidateQueries({
+                    queryKey: ["appointments"],
+                  });
+            ```
+            
+        - 그 밖에 active 여부, stale 상태 등의 필터옵션이 있음
+- 필터와 일치하는 모든 쿼리에 대해 메서드 적용
+
+### Mutation 에러처리
+
+```jsx
+export const queryClient = new QueryClient({
+  mutationCache: new MutationCache({
+    onError: (error) => {
+      errorHandler(error.message);
+    },
+  }),
+});
+```
+
+- QueryCache처럼 QueryClient에 MutationCache 옵션을 추가해서 MutationCache에 대한 전역적인 설정을 해줄 수 있음.
